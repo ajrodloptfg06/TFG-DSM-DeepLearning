@@ -25,7 +25,7 @@ Tambien hay incertidumbre importante en el preprocesado: no hay normalizacion ex
 | HRNet | celdas 24-26 | Si | Si, probado en salida guardada | Usa ultimo feature map de HRNet y reescala a 128x128. La heuristica NHWC/NCHW es fragil, aunque en la ejecucion guardada no rompe. |
 | U-Net | celdas 29, 31-32 | Si por inspeccion | Si por inspeccion | 4 bajadas + bottleneck, 4 subidas, salida 1 canal. No hay salida guardada de prueba de forma. |
 | U-Net++ | celdas 30-32 | Si por inspeccion | Si por inspeccion | Implementacion nested completa hasta `x04`, salida 1 canal. La evaluacion posterior tiene un error de funcion. |
-| TransUNet | No aparece | No aplica | No aplica | No hay clase, importacion ni entrenamiento de TransUNet en el notebook. |
+| TransUNet | Fuera de alcance | No aplica | No aplica | No hay clase, importacion ni entrenamiento; se ha descartado y no debe implementarse. |
 
 ## Hallazgos por gravedad
 
