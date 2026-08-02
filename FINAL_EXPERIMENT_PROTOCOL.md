@@ -35,22 +35,22 @@ Los cinco modelos obtienen sus rutas mediante checkpoint_paths y comparten exclu
 
 La evaluación oficial carga esos cinco checkpoints best desde el mismo CKPT_DIR y solo escribe results.csv después de haber evaluado correctamente todos los modelos. No usa results=[] ni append entre celdas.
 
-### 1.3 Veredicto de preparación
+### 1.3 Veredicto de preparación tras los cambios de seguridad
 
-**El aislamiento FAST/FINAL y la evaluación trazable están listos. El notebook todavía no se considera totalmente listo para una ejecución FINAL desatendida de arriba abajo.**
+**El notebook principal queda preparado estructuralmente para una ejecución FINAL limpia de arriba abajo**, sujeto a las comprobaciones externas de datos, escala, dependencias y recursos descritas en este protocolo.
 
-No hay un error que mezcle automáticamente FAST y FINAL, pero antes de gastar el tiempo de entrenamiento conviene resolver o controlar estos puntos:
+En la rama final-run-safety-fixes se han aplicado estas medidas:
 
-1. Un RUN_ID explícito reutilizado reanuda checkpoints anteriores y puede conservar campos antiguos del manifiesto.
-2. Swin, Attention y HRNet se evalúan individualmente sobre test antes de la evaluación oficial.
-3. Quedan varios modelos residentes en GPU durante la ejecución secuencial.
-4. El sanity check conjunto aparece después de entrenar los tres modelos alternativos.
-5. El sanity check interpola una salida espacial incorrecta antes de comprobarla y podría ocultar un incumplimiento nativo.
-6. PyTorch y timm se instalan sin versión fijada.
-7. El seed se establece globalmente una vez, pero no se reinicia antes de cada modelo; el orden de ejecución puede afectar inicialización y shuffle.
-8. El commit puede quedar como null en run_manifest.json si Colab abrió el notebook desde GitHub sin un checkout Git ni GIT_COMMIT.
+1. Las cinco arquitecturas se definen antes de cualquier entrenamiento.
+2. El sanity check conjunto se ejecuta antes del primer modelo, exige la salida nativa exacta (2,1,128,128) y no interpola.
+3. Las evaluaciones intermedias sobre test están protegidas por RUN_INTERMEDIATE_TEST_EVALS=False.
+4. Cada modelo se libera de GPU antes de construir el siguiente.
+5. La evaluación oficial usa factorías y mantiene un único modelo en GPU.
+6. ALLOW_RESUME es False por defecto y un RUN_ID final con artefactos existentes falla antes de escribir.
+7. La reanudación explícita valida manifiesto y metadatos del checkpoint.
+8. La configuración efectiva se imprime antes de cargar datos y entrenar.
 
-Estos puntos se documentan en Cambios recomendados y no se modifican en esta rama.
+Permanecen riesgos que no pertenecen a este bloque: unidades y nodata del DSM, equivalencia del split con el paper, versiones no fijadas de timm/PyTorch, una sola seed y ausencia de fingerprints del contenido de los arrays.
 
 ## 2. A. Objetivo del experimento final
 
@@ -159,7 +159,7 @@ La igualdad del protocolo no exige que las arquitecturas tengan el mismo número
 21. Registrar canales y layouts reales de timm para Swin y HRNet.
 22. No iniciar entrenamiento si algún modelo falla, si las dependencias cambian el layout o si la GPU no tiene memoria suficiente.
 
-En el notebook actual, las definiciones y el sanity check conjunto no están ordenados antes de todos los entrenamientos. Hasta aplicar el cambio recomendado, deben respetarse los smoke tests individuales y evitar convertir la ejecución manual fuera de orden en el run oficial.
+El notebook actual ya coloca las cinco definiciones y el shape check estricto antes del primer entrenamiento. El check libera cada modelo antes de construir el siguiente.
 
 ### 6.4 Entrenamiento
 
@@ -266,11 +266,11 @@ Una tabla ordenada ayuda a presentar los resultados, pero no debe sobrescribir r
 
 ### Ejecución
 
-- Reutilizar RUN_ID puede reanudar pesos antiguos y conservar metadatos anteriores.
-- Interrumpir un run reutilizado puede dejar un results.csv antiguo junto a checkpoints parcialmente actualizados.
-- Las evaluaciones intermedias de Swin, Attention y HRNet exponen test antes de la evaluación oficial.
-- Mantener varios modelos en GPU puede provocar OOM.
-- El sanity check conjunto se ejecuta demasiado tarde y puede corregir shapes por interpolación.
+- Reutilizar RUN_ID solo está permitido con TFG_ALLOW_RESUME=true y compatibilidad validada; para un experimento limpio debe usarse un identificador nuevo.
+- Una reanudación autorizada puede conservar un results.csv previo hasta repetir la evaluación oficial; debe comprobarse su fecha al finalizar.
+- RUN_INTERMEDIATE_TEST_EVALS permite depuración explícita; debe permanecer false para no consultar test antes de la evaluación oficial.
+- Los modelos se liberan secuencialmente, aunque Swin y HRNet todavía pueden superar la memoria disponible por sí solos.
+- El sanity check conjunto es previo y estricto; cualquier incumplimiento nativo detiene el run.
 - Abrir el notebook desde GitHub no garantiza que git rev-parse funcione en Colab; el commit puede quedar sin registrar.
 - Los notebooks versionados no contienen outputs de una ejecución final completa.
 
@@ -339,32 +339,32 @@ Si no se pueden marcar las comprobaciones de escala, nodata, split o shapes, el 
 | Checkpoint last frente a best | Separados | Evaluar exclusivamente best |
 | Modelos de commits distintos | No se valida al reanudar | Registrar SHA y no reanudar tras cambiar código |
 
-## 13. Cambios recomendados
+## 13. Cambios de seguridad aplicados
 
-No se aplican en esta rama.
+La rama final-run-safety-fixes aplica los cambios mínimos de seguridad sin modificar arquitecturas, métricas, loss, optimizador, scheduler ni épocas.
 
-### Prioridad alta antes del run costoso
+### Aplicado
 
-1. **Centralizar definiciones y sanity check antes de cualquier entrenamiento.** El shape check conjunto debería ejecutarse con los cinco modelos ya definidos y antes de entrenarlos.
-2. **Hacer estricto el shape check.** Debe comprobar la salida nativa y fallar antes de interpolar.
-3. **Eliminar o saltar las evaluaciones intermedias sobre test.** Test debe consultarse una vez, mediante evaluate_best_checkpoints, cuando las decisiones estén congeladas.
-4. **Liberar memoria entre modelos.** Eliminar referencias, mover el modelo anterior a CPU o usar una función secuencial que no retenga cinco redes en GPU.
-5. **Impedir la reutilización accidental de un RUN_ID final.** Para un run limpio, fallar si las carpetas ya contienen artefactos; habilitar resume solo mediante una opción explícita.
-6. **Validar compatibilidad al reanudar.** Comparar commit, modelo, seed, épocas, batch, learning rate, weight decay y rutas/fingerprints de datos con el manifiesto existente.
+1. **Definiciones antes del entrenamiento.** U-Net, U-Net++, Attention U-Net residual, Swin híbrido y HRNet multiescala quedan disponibles antes del sanity check y de cualquier llamada de entrenamiento.
+2. **Shape check nativo y estricto.** Se prueba cada factoría con (2,4,128,128), se exige (2,1,128,128) y no se corrige la salida mediante interpolación.
+3. **Test intermedio desactivado.** RUN_INTERMEDIATE_TEST_EVALS es False por defecto. evaluate_best_checkpoints sigue siendo la única evaluación oficial.
+4. **Memoria secuencial.** Los modelos se mueven a CPU, se eliminan sus referencias, se ejecuta gc.collect() y, cuando hay CUDA, torch.cuda.empty_cache().
+5. **Evaluación mediante factorías.** La función oficial construye, evalúa y libera un modelo cada vez.
+6. **RUN_ID protegido.** En FINAL, ALLOW_RESUME=False falla si las carpetas del RUN_ID ya contienen artefactos.
+7. **Resume explícito y compatible.** TFG_ALLOW_RESUME=true exige coincidencia de run_id, run_mode, seed, épocas, batch size, learning rate, weight decay y rutas esperadas. Cada checkpoint nuevo registra además clase de modelo y ruta.
+8. **Configuración visible.** Antes de entrenar se imprimen modo, identificador, política de resume, directorios e hiperparámetros principales.
+9. **Visualización bajo demanda.** Después del CSV oficial se reconstruye y carga un único modelo.
 
-### Prioridad media para reproducibilidad
+### Limitaciones conocidas
 
-7. Fijar versiones de PyTorch, timm y dependencias.
-8. Registrar el SHA mediante GIT_COMMIT cuando Colab no sea un checkout Git.
-9. Guardar índices o fingerprints del split.
-10. Decidir y documentar una política de reseeding por modelo y del generador del DataLoader.
-11. Añadir fingerprints de los cuatro arrays o de sus metadatos.
-12. Planificar varias seeds después del primer run final reproducible.
-
-Estos cambios afectan al orden y la seguridad del pipeline, no a las arquitecturas, métricas, loss, optimizador ni scheduler.
+- Los checkpoints creados antes de esta protección no contienen el bloque compatibility. Se conservan, pero no se reanudan automáticamente.
+- Las rutas de datos se comparan, pero todavía no se verifican hashes del contenido de los arrays.
+- La compatibilidad verifica la clase del modelo y que el state_dict pueda cargarse; no calcula un hash de la definición Python.
+- TFG_RUN_INTERMEDIATE_TEST_EVALS permite depuración explícita, pero debe permanecer false durante el experimento final.
+- Siguen pendientes las unidades de y, nodata, equivalencia espacial del split, versiones fijadas y múltiples seeds.
 
 ## 14. Conclusión operativa
 
-El notebook ya separa correctamente FAST y FINAL, usa checkpoints last/best por modelo y regenera una tabla oficial desde los cinco mejores checkpoints. Sin embargo, antes de iniciar un entrenamiento final costoso se recomienda corregir el orden del sanity check, eliminar las consultas intermedias a test, controlar memoria y hacer explícita la política de RUN_ID/resume.
+El notebook separa FAST y FINAL, protege la creación de runs finales, valida la compatibilidad mínima al reanudar, comprueba shapes nativos antes de entrenar y procesa un único modelo en GPU. La tabla oficial continúa regenerándose desde los cinco mejores checkpoints.
 
-Hasta entonces, el notebook está **preparado a nivel de aislamiento y trazabilidad, pero condicionado para una ejecución final completamente limpia y desatendida**.
+Por tanto, el pipeline queda **listo a nivel de orden, aislamiento, memoria y evaluación** para el run FINAL. Antes de iniciarlo todavía deben confirmarse los datos, las unidades del DSM, nodata, la versión de timm/PyTorch, el SHA del código y la capacidad de la GPU.

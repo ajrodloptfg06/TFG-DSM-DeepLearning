@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-08-03 — seguridad del run FINAL
+
+Rama: final-run-safety-fixes
+
+### Añadido
+
+- ALLOW_RESUME, controlado por TFG_ALLOW_RESUME y desactivado por defecto.
+- Bloqueo de RUN_ID final cuando ya contiene artefactos y no se autorizó resume.
+- Validación de compatibilidad del manifiesto: modo, seed, épocas, batch size, learning rate, weight decay y rutas de datos.
+- Metadatos de compatibilidad en checkpoints nuevos, incluida clase de modelo y ruta.
+- RUN_INTERMEDIATE_TEST_EVALS, desactivado por defecto.
+- Resumen completo de configuración impreso antes del entrenamiento.
+
+### Cambiado
+
+- Las cinco definiciones de modelo preceden a cualquier entrenamiento.
+- El sanity check exige la salida nativa exacta (2,1,128,128) sin interpolación.
+- Entrenamiento, evaluación y visualización liberan modelos secuencialmente de GPU.
+- evaluate_best_checkpoints recibe factorías y evalúa un único modelo cada vez.
+- Las consultas intermedias a test solo pueden activarse de forma explícita.
+- FINAL_EXPERIMENT_PROTOCOL.md refleja las medidas aplicadas y sus limitaciones.
+
+### Compatibilidad
+
+- No se eliminan checkpoints ni resultados existentes.
+- Los checkpoints antiguos sin metadatos compatibility se conservan, pero se rechazan para resume automático.
+- No se modifican arquitecturas, métricas, loss, AdamW, CosineAnnealingLR ni las 50 épocas de FINAL.
+
 ## Unreleased — aislamiento y trazabilidad de ejecuciones
 
 Rama: `fix-run-isolation-and-traceability`
@@ -57,4 +85,4 @@ Rama: `fix-run-isolation-and-traceability`
 
 ### Compatibilidad
 
-Los artefactos antiguos situados directamente en los directorios anteriores no se borran ni sobrescriben. Para reanudar un run concreto debe reutilizarse su mismo `RUN_ID`, preferentemente definiendo `TFG_RUN_ID` antes de ejecutar la configuración.
+Los artefactos antiguos no se borran ni sobrescriben. Tras final-run-safety-fixes, reanudar exige TFG_ALLOW_RESUME=true y metadatos compatibility; los checkpoints antiguos sin ellos se conservan pero se rechazan de forma segura.
