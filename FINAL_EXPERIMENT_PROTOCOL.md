@@ -145,7 +145,7 @@ La igualdad del protocolo no exige que las arquitecturas tengan el mismo número
 
 11. Comprobar que existen los cuatro archivos esperados: x_train, y_train, x_test e y_test.
 12. Ejecutar la carga y verificar shapes, dtype, min y max.
-13. Ejecutar el análisis completo de escala para train, validation y test.
+13. Decidir si se necesita regenerar la auditoría completa de escala. Es opcional para arrancar el run final: mantener RUN_DATA_SCALE_AUDIT=False para omitirla o activarla manualmente; la implementación por chunks evita copias completas y marca los percentiles aproximados.
 14. Confirmar que no hay NaN o infinitos.
 15. Confirmar cómo se representa nodata.
 16. Confirmar por escrito las unidades y el datum del DSM antes de interpretar MAE/RMSE como metros.
@@ -160,6 +160,8 @@ La igualdad del protocolo no exige que las arquitecturas tengan el mismo número
 22. No iniciar entrenamiento si algún modelo falla, si las dependencias cambian el layout o si la GPU no tiene memoria suficiente.
 
 El notebook actual ya coloca las cinco definiciones y el shape check estricto antes del primer entrenamiento. El check libera cada modelo antes de construir el siguiente.
+
+La auditoría de escala no es una dependencia del sanity check. Con RUN_DATA_SCALE_AUDIT=False, la celda solo informa cómo activarla y la ejecución puede continuar directamente a las definiciones y al shape check estricto. Si aún faltan evidencias de unidades, nodata o escala, deben obtenerse y documentarse antes de interpretar los resultados, pero su cálculo no debe bloquear una comprobación de shapes.
 
 ### 6.4 Entrenamiento
 
@@ -355,6 +357,7 @@ La rama final-run-safety-fixes aplica los cambios mínimos de seguridad sin modi
 8. **Resume explícito y compatible.** TFG_ALLOW_RESUME=true exige coincidencia de run_id, run_mode, seed, épocas, batch size, learning rate, weight decay y rutas esperadas. Cada checkpoint nuevo registra además clase de modelo y ruta.
 9. **Configuración visible.** Antes de entrenar se imprimen modo, identificador, política de resume, directorios e hiperparámetros principales.
 10. **Visualización bajo demanda.** Después del CSV oficial se reconstruye y carga un único modelo.
+11. **Auditoría de escala opcional y acotada.** RUN_DATA_SCALE_AUDIT es False por defecto. Cuando se activa, las estadísticas exactas se acumulan por chunks y los percentiles se limitan mediante MAX_PERCENTILE_SAMPLE; el sanity check no depende del DataFrame resultante.
 
 ### Limitaciones conocidas
 

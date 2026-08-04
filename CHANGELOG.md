@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-08-04 — auditoría de escala segura en memoria
+
+Rama: memory-safe-data-scale-audit
+
+### Cambiado
+
+- La auditoría de train, validation y test procesa muestras por chunks sin construir subconjuntos completos mediante advanced indexing.
+- Count, finite_count, nonfinite_count, zero_fraction, min, max, mean y std se acumulan sobre todos los valores con memoria acotada.
+- Los percentiles usan todos los valores finitos hasta MAX_PERCENTILE_SAMPLE y, por encima del límite, un muestreo reproducible; percentiles_method documenta el método por fila.
+- RUN_DATA_SCALE_AUDIT es False por defecto y la celda explica cómo activar el análisis manualmente.
+- El protocolo final aclara que la auditoría completa es opcional y no bloquea el sanity check.
+
+### No cambiado
+
+- Arquitecturas, métricas, entrenamiento, loss, optimizador, scheduler y épocas.
+- El notebook FAST, checkpoints y resultados existentes.
+
 ## 2026-08-03 — sanity check independiente
 
 Rama: make-sanity-check-independent
