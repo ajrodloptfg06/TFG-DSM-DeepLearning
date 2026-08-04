@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-08-03 — sanity check independiente
+
+Rama: make-sanity-check-independent
+
+### Cambiado
+
+- El sanity check define localmente las factorías de los cinco modelos.
+- El tensor dummy se crea dentro de la función con forma exacta (2,4,128,128).
+- La salida se valida de forma nativa contra (2,1,128,128), sin interpolación.
+- No se usan modelos entrenados, histories, rutas de checkpoint ni outputs de fit.
+- Cada modelo temporal se mueve a CPU, se elimina y libera caché CUDA antes del siguiente.
+
+### No cambiado
+
+- Las clases de los cinco modelos y sus forwards.
+- Métricas, loss, optimizador, scheduler y épocas.
+- Las celdas de entrenamiento, que siguen creando sus propias instancias.
+- El notebook FAST, checkpoints y resultados existentes.
+
 ## 2026-08-03 — seguridad del run FINAL
 
 Rama: final-run-safety-fixes

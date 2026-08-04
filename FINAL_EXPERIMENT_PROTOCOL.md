@@ -347,13 +347,14 @@ La rama final-run-safety-fixes aplica los cambios mínimos de seguridad sin modi
 
 1. **Definiciones antes del entrenamiento.** U-Net, U-Net++, Attention U-Net residual, Swin híbrido y HRNet multiescala quedan disponibles antes del sanity check y de cualquier llamada de entrenamiento.
 2. **Shape check nativo y estricto.** Se prueba cada factoría con (2,4,128,128), se exige (2,1,128,128) y no se corrige la salida mediante interpolación.
-3. **Test intermedio desactivado.** RUN_INTERMEDIATE_TEST_EVALS es False por defecto. evaluate_best_checkpoints sigue siendo la única evaluación oficial.
-4. **Memoria secuencial.** Los modelos se mueven a CPU, se eliminan sus referencias, se ejecuta gc.collect() y, cuando hay CUDA, torch.cuda.empty_cache().
-5. **Evaluación mediante factorías.** La función oficial construye, evalúa y libera un modelo cada vez.
-6. **RUN_ID protegido.** En FINAL, ALLOW_RESUME=False falla si las carpetas del RUN_ID ya contienen artefactos.
-7. **Resume explícito y compatible.** TFG_ALLOW_RESUME=true exige coincidencia de run_id, run_mode, seed, épocas, batch size, learning rate, weight decay y rutas esperadas. Cada checkpoint nuevo registra además clase de modelo y ruta.
-8. **Configuración visible.** Antes de entrenar se imprimen modo, identificador, política de resume, directorios e hiperparámetros principales.
-9. **Visualización bajo demanda.** Después del CSV oficial se reconstruye y carga un único modelo.
+3. **Independencia del entrenamiento.** El sanity check define internamente sus cinco factorías y el tensor dummy; no usa modelos, histories, rutas de checkpoint ni outputs de fit. Las celdas de entrenamiento crean después sus propias instancias.
+4. **Test intermedio desactivado.** RUN_INTERMEDIATE_TEST_EVALS es False por defecto. evaluate_best_checkpoints sigue siendo la única evaluación oficial.
+5. **Memoria secuencial.** Los modelos se mueven a CPU, se eliminan sus referencias, se ejecuta gc.collect() y, cuando hay CUDA, torch.cuda.empty_cache().
+6. **Evaluación mediante factorías.** La función oficial construye, evalúa y libera un modelo cada vez.
+7. **RUN_ID protegido.** En FINAL, ALLOW_RESUME=False falla si las carpetas del RUN_ID ya contienen artefactos.
+8. **Resume explícito y compatible.** TFG_ALLOW_RESUME=true exige coincidencia de run_id, run_mode, seed, épocas, batch size, learning rate, weight decay y rutas esperadas. Cada checkpoint nuevo registra además clase de modelo y ruta.
+9. **Configuración visible.** Antes de entrenar se imprimen modo, identificador, política de resume, directorios e hiperparámetros principales.
+10. **Visualización bajo demanda.** Después del CSV oficial se reconstruye y carga un único modelo.
 
 ### Limitaciones conocidas
 
