@@ -39,7 +39,7 @@ No existe un archivo independiente de validación. TensorDataset se construye co
 
 El test procede de archivos NPY independientes. No hay información versionada que demuestre separación espacial, ausencia de solapamiento entre patches o equivalencia con el split del paper.
 
-La celda data-scale-audit se ejecuta después de random_split y usa exactamente train_ds.indices y val_ds.indices. Calcula por separado train, validation y test; no confunde el array fuente completo con el subconjunto real de entrenamiento.
+La celda data-scale-audit se define después de random_split y usa exactamente train_ds.indices y val_ds.indices. Calcula por separado train, validation y test por chunks, sin materializar copias completas de los subconjuntos. En el notebook final queda desactivada por defecto mediante RUN_DATA_SCALE_AUDIT=False y puede activarse manualmente cuando se quiera generar la evidencia de escala.
 
 ## 5. Estadísticas añadidas
 
@@ -51,7 +51,9 @@ La función analyze_data_scale calcula, para cada uno de los cuatro canales de x
 - min, max, mean y std;
 - percentiles 1, 5, 25, 50, 75, 95 y 99.
 
-Los percentiles son exactos sobre los valores finitos del split, no una estimación por minibatches. El resultado queda en el DataFrame data_scale_stats y se muestra en el notebook. No se escribe en results.csv ni se altera el manifiesto de entrenamiento.
+Min, max, mean, std, count, finite_count, nonfinite_count y zero_fraction se acumulan sobre todos los valores mediante chunks. Los percentiles usan todos los valores finitos cuando su número no supera MAX_PERCENTILE_SAMPLE; en caso contrario se estiman con un muestreo reproducible y acotado, de hasta 1 000 000 de valores por defecto. La columna percentiles_method indica si cada fila es exacta o aproximada. El resultado queda en el DataFrame data_scale_stats cuando se activa la bandera; no se escribe en results.csv ni se altera el manifiesto de entrenamiento.
+
+Esta estrategia limita la memoria adicional al chunk actual y a la muestra de percentiles. El test se recorre mediante slices y train/validation mediante pequeños chunks de índices; nunca se construyen x_train[train_indices], x_train[val_indices] ni sus equivalentes completos para y.
 
 assess_dsm_numeric_scale solo clasifica la escala numérica de forma prudente: detecta rangos compatibles con [0, 1] o con una estandarización aproximada. Un rango distinto se describe como “height-like”, pero nunca se etiqueta automáticamente como metros.
 
