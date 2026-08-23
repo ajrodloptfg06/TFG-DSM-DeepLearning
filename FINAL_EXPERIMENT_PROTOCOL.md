@@ -163,24 +163,29 @@ El notebook actual ya coloca las cinco definiciones y el shape check estricto an
 
 La auditoría de escala no es una dependencia del sanity check. Con RUN_DATA_SCALE_AUDIT=False, la celda solo informa cómo activarla y la ejecución puede continuar directamente a las definiciones y al shape check estricto. Si aún faltan evidencias de unidades, nodata o escala, deben obtenerse y documentarse antes de interpretar los resultados, pero su cálculo no debe bloquear una comprobación de shapes.
 
-### 6.4 Entrenamiento
+### 6.4 Entrenamiento secuencial oficial
 
-23. Entrenar los cinco modelos dentro del mismo RUN_ID.
-24. Verificar para cada modelo que se actualizan last y best en CKPT_DIR.
-25. No copiar checkpoints de otra carpeta ni renombrar artefactos manualmente.
-26. Si Colab se interrumpe, reanudar solo con el mismo RUN_ID y después de comprobar que manifiesto, configuración, datos y commit siguen siendo idénticos.
-27. No consultar test para decidir hiperparámetros, épocas, arquitectura o selección de checkpoint.
-28. Liberar la memoria del modelo anterior antes de pasar al siguiente si la GPU se acerca al límite.
+23. Mantener RUN_FINAL_TRAINING=False mientras se ejecutan configuración, datos, definiciones y sanity check.
+24. Confirmar que STRICT_SHAPE_CHECK_PASSED es True y revisar el resumen impreso del MODEL_REGISTRY.
+25. Cambiar explícitamente RUN_FINAL_TRAINING=True en la celda resumen/control situada después del sanity check; no reejecutar la configuración central ni regenerar RUN_ID.
+26. Ejecutar run_final_training_pipeline una sola vez. El registro fija el orden U-Net, U-Net++, Attention U-Net residual, Swin híbrido y HRNet multiescala.
+27. Verificar para cada modelo que se actualizan last y best en CKPT_DIR y que el mejor val_RMSE queda en el resumen y el manifiesto.
+28. No copiar checkpoints de otra carpeta ni renombrar artefactos manualmente.
+29. Si Colab se interrumpe, reanudar solo con el mismo RUN_ID y después de comprobar que manifiesto, configuración, datos y commit siguen siendo idénticos.
+30. No consultar test para decidir hiperparámetros, épocas, arquitectura o selección de checkpoint. El orquestador solo recibe train_loader y val_loader.
+31. Confirmar que cada modelo se libera antes de instanciar el siguiente.
 
 ### 6.5 Evaluación oficial
 
-29. Comprobar que existen los cinco best checkpoints.
-30. Ejecutar una sola vez evaluate_best_checkpoints.
-31. Confirmar que cada fila usa el checkpoint best del mismo RUN_ID.
-32. Guardar results.csv en results/final/RUN_ID.
-33. Confirmar que run_manifest.json se actualiza con los checkpoints y la ruta del CSV.
-34. Tratar el CSV regenerado por esa función como única tabla oficial.
-35. Ejecutar visualizaciones solo después de congelar el CSV oficial; no usarlas para elegir el ganador.
+32. Mantener RUN_FINAL_EVALUATION=False durante todo el entrenamiento.
+33. Comprobar que existen los cinco best checkpoints.
+34. Cambiar explícitamente RUN_FINAL_EVALUATION=True en la celda resumen/control, ejecutarla para registrar el estado y después ejecutar la celda oficial de evaluación una sola vez.
+35. evaluate_best_checkpoints valida primero la presencia de los cinco best, construye un único modelo cada vez y falla antes de consultar test si falta alguno.
+36. Confirmar que cada fila usa el checkpoint best del mismo RUN_ID.
+37. Guardar results.csv en results/final/RUN_ID.
+38. Confirmar que run_manifest.json se actualiza con los checkpoints y la ruta del CSV.
+39. Tratar results.csv regenerado por esa función como única tabla oficial.
+40. Mantener desactivadas las visualizaciones sobre test dentro del flujo oficial; realizarlas, si se necesitan, como análisis posterior a partir de un protocolo separado y sin alterar results.csv.
 
 ## 7. F. Archivos que debe generar cada run
 
@@ -349,15 +354,18 @@ La rama final-run-safety-fixes aplica los cambios mínimos de seguridad sin modi
 
 1. **Definiciones antes del entrenamiento.** U-Net, U-Net++, Attention U-Net residual, Swin híbrido y HRNet multiescala quedan disponibles antes del sanity check y de cualquier llamada de entrenamiento.
 2. **Shape check nativo y estricto.** Se prueba cada factoría con (2,4,128,128), se exige (2,1,128,128) y no se corrige la salida mediante interpolación.
-3. **Independencia del entrenamiento.** El sanity check define internamente sus cinco factorías y el tensor dummy; no usa modelos, histories, rutas de checkpoint ni outputs de fit. Las celdas de entrenamiento crean después sus propias instancias.
+3. **Independencia del entrenamiento.** El sanity check usa únicamente constructores del registro y su propio tensor dummy; no usa modelos entrenados, histories ni outputs de fit. La marca STRICT_SHAPE_CHECK_PASSED solo se activa tras validar los cinco modelos.
 4. **Test intermedio desactivado.** RUN_INTERMEDIATE_TEST_EVALS es False por defecto. evaluate_best_checkpoints sigue siendo la única evaluación oficial.
 5. **Memoria secuencial.** Los modelos se mueven a CPU, se eliminan sus referencias, se ejecuta gc.collect() y, cuando hay CUDA, torch.cuda.empty_cache().
 6. **Evaluación mediante factorías.** La función oficial construye, evalúa y libera un modelo cada vez.
 7. **RUN_ID protegido.** En FINAL, ALLOW_RESUME=False falla si las carpetas del RUN_ID ya contienen artefactos.
 8. **Resume explícito y compatible.** TFG_ALLOW_RESUME=true exige coincidencia de run_id, run_mode, seed, épocas, batch size, learning rate, weight decay y rutas esperadas. Cada checkpoint nuevo registra además clase de modelo y ruta.
 9. **Configuración visible.** Antes de entrenar se imprimen modo, identificador, política de resume, directorios e hiperparámetros principales.
-10. **Visualización bajo demanda.** Después del CSV oficial se reconstruye y carga un único modelo.
+10. **Visualización fuera del flujo oficial.** Las celdas que cargaban un modelo y una muestra de test quedan desactivadas; evaluate_best_checkpoints es el único consumidor de test durante este protocolo.
 11. **Auditoría de escala opcional y acotada.** RUN_DATA_SCALE_AUDIT es False por defecto. Cuando se activa, las estadísticas exactas se acumulan por chunks y los percentiles se limitan mediante MAX_PERCENTILE_SAMPLE; el sanity check no depende del DataFrame resultante.
+12. **Registro único.** MODEL_REGISTRY contiene los cinco modelos en orden oficial, constructores, checkpoints last/best y uso efectivo de backbone preentrenado; valida nombres y rutas duplicadas.
+13. **Entrenamiento opt-in.** RUN_FINAL_TRAINING es False por defecto. run_final_training_pipeline exige modo FINAL, rutas del RUN_ID y sanity check correcto, y entrena/libera un solo modelo cada vez.
+14. **Evaluación opt-in.** RUN_FINAL_EVALUATION es False por defecto. evaluate_best_checkpoints valida los cinco best antes de consultar test y regenera results.csv y run_manifest.json.
 
 ### Limitaciones conocidas
 
@@ -369,6 +377,6 @@ La rama final-run-safety-fixes aplica los cambios mínimos de seguridad sin modi
 
 ## 14. Conclusión operativa
 
-El notebook separa FAST y FINAL, protege la creación de runs finales, valida la compatibilidad mínima al reanudar, comprueba shapes nativos antes de entrenar y procesa un único modelo en GPU. La tabla oficial continúa regenerándose desde los cinco mejores checkpoints.
+El notebook separa FAST y FINAL, protege la creación de runs finales, valida la compatibilidad mínima al reanudar, comprueba shapes nativos antes de entrenar y orquesta secuencialmente un único modelo en GPU. Entrenamiento y evaluación permanecen desactivados por defecto. La tabla oficial continúa regenerándose exclusivamente desde los cinco mejores checkpoints.
 
 Por tanto, el pipeline queda **listo a nivel de orden, aislamiento, memoria y evaluación** para el run FINAL. Antes de iniciarlo todavía deben confirmarse los datos, las unidades del DSM, nodata, la versión de timm/PyTorch, el SHA del código y la capacidad de la GPU.

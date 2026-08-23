@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-08-20 — orquestador secuencial del entrenamiento final
+
+Rama: final-training-orchestrator
+
+### Añadido
+
+- MODEL_REGISTRY define el orden oficial, constructor, checkpoints last/best y uso de backbone preentrenado de los cinco modelos.
+- La validación del registro impide nombres duplicados y rutas de checkpoint compartidas.
+- STRICT_SHAPE_CHECK_PASSED solo se activa después de que los cinco modelos superen el sanity check nativo.
+- run_final_training_pipeline entrena un único modelo cada vez, registra best val_RMSE y libera CPU/GPU antes del siguiente.
+- RUN_FINAL_TRAINING y RUN_FINAL_EVALUATION son False por defecto y requieren activación explícita.
+- evaluate_best_checkpoints comprueba todos los best antes de iniciar la única evaluación oficial sobre test.
+- Las antiguas celdas de visualización sobre test quedan desactivadas para evitar consultas fuera de la evaluación oficial.
+
+### Cambiado
+
+- Se sustituyen las celdas de entrenamiento automático/manual por el flujo secuencial protegido.
+- El resumen previo muestra las banderas, rutas, hiperparámetros y los cinco modelos registrados.
+- FINAL_EXPERIMENT_PROTOCOL.md documenta configuración, datos, sanity check, entrenamiento opt-in, evaluación opt-in y results.csv oficial.
+
+### No cambiado
+
+- Arquitecturas, métricas, loss, optimizador, scheduler y número de épocas.
+- El notebook FAST, datasets, checkpoints y resultados existentes.
+
 ## 2026-08-04 — auditoría de escala segura en memoria
 
 Rama: memory-safe-data-scale-audit
