@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-08-25 — pipeline opcional de validación repetida
+
+Rama: cross-validation-pipeline
+
+### Añadido
+
+- Configuración opt-in con `RUN_CROSS_VALIDATION=False`, cinco splits 80/20 reproducibles y Attention U-Net residual como único modelo por defecto.
+- Generación independiente de cada partición mediante `CV_SEED + fold_idx`, con tamaños y hashes SHA-256 de índices registrados.
+- Checkpoints aislados por modelo y fold bajo `checkpoints/crossval/<RUN_ID>/`.
+- `run_cross_validation_pipeline()` con modelo, optimizador y scheduler nuevos por fold, selección por `val_RMSE` y liberación de memoria entre entrenamientos.
+- `crossval_fold_results.csv`, `crossval_summary.csv` y `crossval_manifest.json` bajo `results/crossval/<RUN_ID>/`.
+- Protección frente a artefactos existentes y comprobación estricta del manifiesto cuando `ALLOW_RESUME=True`.
+- Tabla final ordenada por RMSE que muestra media ± desviación estándar.
+- `CROSS_VALIDATION.md` documenta alcance, coste, reproducibilidad y relación con el test final.
+
+### No cambiado
+
+- Arquitecturas, métricas, loss, optimizador, scheduler, épocas y evaluación final oficial.
+- Notebook FAST, datasets, checkpoints y resultados existentes.
+- El conjunto de test no participa en la validación repetida.
+
 ## 2026-08-20 — orquestador secuencial del entrenamiento final
 
 Rama: final-training-orchestrator

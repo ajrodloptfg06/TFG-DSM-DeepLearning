@@ -1,6 +1,6 @@
 # Protocolo del experimento final
 
-Fecha de revisión: 2026-08-03
+Fecha de revisión: 2026-08-25
 
 Rama: **final-experiment-protocol**
 
@@ -380,3 +380,17 @@ La rama final-run-safety-fixes aplica los cambios mínimos de seguridad sin modi
 El notebook separa FAST y FINAL, protege la creación de runs finales, valida la compatibilidad mínima al reanudar, comprueba shapes nativos antes de entrenar y orquesta secuencialmente un único modelo en GPU. Entrenamiento y evaluación permanecen desactivados por defecto. La tabla oficial continúa regenerándose exclusivamente desde los cinco mejores checkpoints.
 
 Por tanto, el pipeline queda **listo a nivel de orden, aislamiento, memoria y evaluación** para el run FINAL. Antes de iniciarlo todavía deben confirmarse los datos, las unidades del DSM, nodata, la versión de timm/PyTorch, el SHA del código y la capacidad de la GPU.
+
+## 15. Validación repetida y relación con el resultado final
+
+El notebook incorpora un flujo opcional de *repeated holdout* con cinco splits aleatorios reproducibles 80/20 sobre `x_train` / `y_train`. Está desactivado por defecto mediante `RUN_CROSS_VALIDATION=False` y se configura inicialmente solo para Attention U-Net residual, evitando iniciar 25 entrenamientos de forma accidental.
+
+Este análisis responde a una pregunta complementaria: cuánto varían MAE, RMSE y R² de validación al cambiar la partición train/validation. No es un 5-fold clásico disjunto y no consulta el conjunto de test.
+
+La jerarquía de evidencia del TFG queda así:
+
+1. El run FINAL sobre el test reservado sigue siendo la comparación principal entre los cinco modelos.
+2. La validación repetida aporta media y desviación estándar para medir estabilidad frente al split.
+3. Las métricas de validación repetida no se mezclan, promedian ni sustituyen a las métricas finales de test.
+
+Los checkpoints y resultados se aíslan bajo `checkpoints/crossval/<RUN_ID>/` y `results/crossval/<RUN_ID>/`. El procedimiento completo, las etiquetas válidas de modelos y las condiciones de reanudación se describen en `CROSS_VALIDATION.md`.
