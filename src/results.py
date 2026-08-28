@@ -55,7 +55,7 @@ def load_all_crossval_results(results_dir: str | Path | None = None) -> pd.DataF
     if not frames:
         return _empty_frame(
             FOLD_RESULT_COLUMNS,
-            f"No se encontraron crossval_fold_results.csv bajo {root / 'crossval'}.",
+            "No hay resultados fold a fold disponibles.",
             warnings,
         )
     combined = pd.concat(frames, ignore_index=True, sort=False)
@@ -73,7 +73,7 @@ def load_existing_crossval_summaries(
     if not frames:
         return _empty_frame(
             SUMMARY_COLUMNS + ["source_csv"],
-            f"No se encontraron crossval_summary.csv bajo {root / 'crossval'}.",
+            "No hay resultados de validación cruzada disponibles en esta versión de la aplicación.",
             warnings,
         )
     combined = pd.concat(frames, ignore_index=True, sort=False)
@@ -90,10 +90,7 @@ def build_crossval_summary(
     if folds.empty:
         existing = load_existing_crossval_summaries(results_dir)
         if existing.empty:
-            message = (
-                "No hay CSV de validación cruzada. Ejecuta primero el pipeline opcional "
-                "del notebook o configura TFG_RESULTS_DIR."
-            )
+            message = "No hay resultados de validación cruzada disponibles en esta versión de la aplicación."
             return _empty_frame(SUMMARY_COLUMNS, message, existing.attrs.get("warnings"))
         available = [column for column in SUMMARY_COLUMNS if column in existing.columns]
         summary = existing[available].copy()
@@ -145,7 +142,7 @@ def load_web_run_results(web_runs_dir: str | Path | None = None) -> pd.DataFrame
     frames, warnings = _read_csvs(paths, expected_kind="resultado web")
     if not frames:
         return _empty_frame(
-            [], f"No se encontraron metrics.csv bajo {root}.", warnings
+            [], "Todavía no hay ejecuciones realizadas desde la web.", warnings
         )
     combined = pd.concat(frames, ignore_index=True, sort=False)
     combined.attrs["message"] = f"Se cargaron {len(paths)} ejecuciones web."

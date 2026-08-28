@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import PurePosixPath
+
 import pandas as pd
 import streamlit as st
 
@@ -22,12 +25,48 @@ MODEL_NAMES = (
 )
 
 
+def _render_technical_details(details: list[str] | tuple[str, ...]) -> None:
+    clean_details = [str(detail) for detail in details if detail]
+    if not clean_details:
+        return
+    with st.expander("Detalles técnicos", expanded=False):
+        for detail in clean_details:
+            st.code(detail, language=None)
+
+
 def _show_dataframe_message(frame: pd.DataFrame) -> None:
     message = frame.attrs.get("message")
     if message:
         st.info(message)
-    for warning in frame.attrs.get("warnings", []):
-        st.warning(warning)
+    _render_technical_details(frame.attrs.get("warnings", []))
+
+
+def _basename_only(value):
+    if pd.isna(value):
+        return value
+    normalized = str(value).replace("\\", "/")
+    return PurePosixPath(normalized).name
+
+
+def _presentable_value(value):
+    if not isinstance(value, str):
+        return value
+    normalized = value.replace("\\", "/")
+    if normalized.startswith("/") or re.match(r"^[A-Za-z]:/", normalized):
+        return PurePosixPath(normalized).name
+    return value
+
+
+def _presentable_table(frame: pd.DataFrame) -> pd.DataFrame:
+    """Elimina rutas internas de las tablas destinadas a la presentación."""
+    visible = frame.copy()
+    visible = visible.drop(columns=["source_csv"], errors="ignore")
+    for column in ("checkpoint", "checkpoint_best", "checkpoint_last"):
+        if column in visible.columns:
+            visible[column] = visible[column].map(_basename_only)
+    for column in visible.select_dtypes(include=["object"]).columns:
+        visible[column] = visible[column].map(_presentable_value)
+    return visible
 
 
 def _render_results(model_name: str) -> None:
@@ -40,7 +79,11 @@ def _render_results(model_name: str) -> None:
         if filtered_summary.empty:
             st.info(f"No hay resumen de validación cruzada para {model_name}.")
         else:
-            st.dataframe(filtered_summary, use_container_width=True, hide_index=True)
+            st.dataframe(
+                _presentable_table(filtered_summary),
+                use_container_width=True,
+                hide_index=True,
+            )
     else:
         _show_dataframe_message(summary)
 
@@ -50,7 +93,11 @@ def _render_results(model_name: str) -> None:
         if filtered_folds.empty:
             st.info(f"No hay filas fold a fold para {model_name}.")
         else:
-            st.dataframe(filtered_folds, use_container_width=True, hide_index=True)
+            st.dataframe(
+                _presentable_table(filtered_folds),
+                use_container_width=True,
+                hide_index=True,
+            )
     else:
         _show_dataframe_message(folds)
 
@@ -61,7 +108,11 @@ def _render_results(model_name: str) -> None:
         if filtered_web.empty:
             st.info(f"No hay ejecuciones web guardadas para {model_name}.")
         else:
-            st.dataframe(filtered_web, use_container_width=True, hide_index=True)
+            st.dataframe(
+                _presentable_table(filtered_web),
+                use_container_width=True,
+                hide_index=True,
+            )
     else:
         _show_dataframe_message(web_results)
 
@@ -78,7 +129,18 @@ def _render_sanity_check() -> None:
 
             with st.spinner("Comprobando las cinco arquitecturas..."):
                 report = sanity_check_models(device="cpu")
-            st.dataframe(pd.DataFrame(report), use_container_width=True, hide_index=True)
+            report_frame = pd.DataFrame(report)
+            technical_errors = [
+                f"{row['model']}: {row['error']}"
+                for row in report
+                if row.get("error")
+            ]
+            if "error" in report_frame.columns:
+                report_frame.loc[report_frame["error"].notna(), "error"] = (
+                    "Error detectado (consulta los detalles técnicos)"
+                )
+            st.dataframe(report_frame, use_container_width=True, hide_index=True)
+            _render_technical_details(technical_errors)
             if all(row["ok"] for row in report):
                 st.success("Todas las arquitecturas devuelven (2, 1, 128, 128).")
             else:
@@ -88,11 +150,12 @@ def _render_sanity_check() -> None:
                 )
         except ImportError as exc:
             st.error(
-                "Faltan dependencias de deep learning. Ejecuta "
-                f"`pip install -r requirements.txt`. Detalle: {exc}"
+                "Faltan dependencias de deep learning para ejecutar esta comprobación."
             )
+            _render_technical_details([f"{type(exc).__name__}: {exc}"])
         except Exception as exc:
-            st.error(f"No se pudo completar el sanity check: {type(exc).__name__}: {exc}")
+            st.error("No se pudo completar el sanity check de arquitecturas.")
+            _render_technical_details([f"{type(exc).__name__}: {exc}"])
 
 
 def _render_training(
@@ -150,17 +213,21 @@ def _render_training(
         }])
         st.dataframe(metrics, use_container_width=True, hide_index=True)
         st.write(f"Run ID: `{result['run_id']}`")
-        st.write(f"Checkpoint best: `{result['checkpoint_best']}`")
-        st.write(f"Checkpoint last: `{result['checkpoint_last']}`")
+        st.write(f"Checkpoint best: `{_basename_only(result['checkpoint_best'])}`")
+        st.write(f"Checkpoint last: `{_basename_only(result['checkpoint_last'])}`")
     except FileNotFoundError as exc:
-        st.error(str(exc))
+        st.error(
+            "No se encontraron los datos necesarios para iniciar el entrenamiento de demostración."
+        )
+        _render_technical_details([f"{type(exc).__name__}: {exc}"])
     except ImportError as exc:
         st.error(
-            "Faltan dependencias de deep learning. Ejecuta "
-            f"`pip install -r requirements.txt`. Detalle: {exc}"
+            "Faltan dependencias de deep learning para iniciar el entrenamiento."
         )
+        _render_technical_details([f"{type(exc).__name__}: {exc}"])
     except Exception as exc:
-        st.error(f"El entrenamiento no pudo completarse: {type(exc).__name__}: {exc}")
+        st.error("El entrenamiento de demostración no pudo completarse.")
+        _render_technical_details([f"{type(exc).__name__}: {exc}"])
 
 
 def main() -> None:
@@ -169,6 +236,11 @@ def main() -> None:
     st.write(
         "Aplicación web básica para seleccionar arquitecturas, lanzar entrenamientos "
         "reducidos o configurables y visualizar métricas de evaluación."
+    )
+    st.info(
+        "Los resultados científicos completos proceden de los entrenamientos de "
+        "validación cruzada realizados previamente. El entrenamiento desde la web "
+        "está pensado como demostración."
     )
 
     st.sidebar.header("Configuración")
