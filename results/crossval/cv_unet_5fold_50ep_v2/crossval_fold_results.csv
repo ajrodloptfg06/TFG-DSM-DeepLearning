@@ -1,0 +1,6 @@
+run_id,model,fold,train_size,val_size,seed,best_val_RMSE,best_val_MAE,best_val_R2,checkpoint,epochs,batch_size,lr,weight_decay
+cv_unet_5fold_50ep_v2,U-Net,1,4800,1200,43,3.2981165404648323,1.5178961928685506,0.8482468724250793,/content/drive/MyDrive/TFG_DSM/checkpoints/crossval/cv_unet_5fold_50ep_v2/unet/fold_01/best_unet.pth,50,16,0.0001,0.0001
+cv_unet_5fold_50ep_v2,U-Net,2,4800,1200,44,3.3437138692739836,1.5580911604563394,0.8395417332649231,/content/drive/MyDrive/TFG_DSM/checkpoints/crossval/cv_unet_5fold_50ep_v2/unet/fold_02/best_unet.pth,50,16,0.0001,0.0001
+cv_unet_5fold_50ep_v2,U-Net,3,4800,1200,45,3.1251659745962956,1.5032451661427815,0.841555118560791,/content/drive/MyDrive/TFG_DSM/checkpoints/crossval/cv_unet_5fold_50ep_v2/unet/fold_03/best_unet.pth,50,16,0.0001,0.0001
+cv_unet_5fold_50ep_v2,U-Net,4,4800,1200,46,3.0658879998460637,1.5068441406885782,0.8359741568565369,/content/drive/MyDrive/TFG_DSM/checkpoints/crossval/cv_unet_5fold_50ep_v2/unet/fold_04/best_unet.pth,50,16,0.0001,0.0001
+cv_unet_5fold_50ep_v2,U-Net,5,4800,1200,47,2.8191052998820965,1.4673268127441406,0.8357210159301758,/content/drive/MyDrive/TFG_DSM/checkpoints/crossval/cv_unet_5fold_50ep_v2/unet/fold_05/best_unet.pth,50,16,0.0001,0.0001

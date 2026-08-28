@@ -1,0 +1,2 @@
+model,n_folds,mean_val_RMSE,std_val_RMSE,mean_val_MAE,std_val_MAE,mean_val_R2,std_val_R2,epochs,batch_size,notes
+Swin-Tiny-Encoder-CNN-Decoder,5,5.368070048543599,0.44750756393445523,2.6698334916432698,0.08194030223893572,0.5311144948005676,0.011803766690319906,50,16,Repeated holdout 80/20; desviación estándar muestral (ddof=1)

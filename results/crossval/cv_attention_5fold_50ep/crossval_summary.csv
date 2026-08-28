@@ -1,0 +1,2 @@
+model,n_folds,mean_val_RMSE,std_val_RMSE,mean_val_MAE,std_val_MAE,mean_val_R2,std_val_R2,epochs,batch_size,notes
+Attention-U-Net-Residual,5,3.13273570268226,0.21687714510013079,1.5520311441421506,0.03752294789779497,0.8400490999221801,0.0035331188420179758,50,16,Repeated holdout 80/20; desviación estándar muestral (ddof=1)

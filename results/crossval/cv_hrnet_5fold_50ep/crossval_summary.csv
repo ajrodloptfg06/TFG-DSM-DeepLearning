@@ -1,0 +1,2 @@
+model,n_folds,mean_val_RMSE,std_val_RMSE,mean_val_MAE,std_val_MAE,mean_val_R2,std_val_R2,epochs,batch_size,notes
+HRNet-W18-Multiscale,5,4.292843142643877,0.32491393689946174,2.1199810702006023,0.05665926893285265,0.6998296022415161,0.00825141937228118,50,16,Repeated holdout 80/20; desviación estándar muestral (ddof=1)
