@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-08-28 — aplicación web Streamlit
+
+Rama: streamlit-web-app
+
+### Añadido
+
+- Paquete `src/` con configuración, modelos, métricas, carga de datos, entrenamiento, resultados y utilidades reutilizables.
+- `MODEL_REGISTRY` con las cinco arquitecturas existentes y sanity check de forma nativa `(2, 1, 128, 128)`.
+- Wrapper `run_web_training()` aislado bajo `web_runs/`, con entrenamiento explícito, checkpoints last/best y métricas de validación.
+- Descubrimiento y agregación de CSV de repeated holdout por `run_id` y modelo.
+- `app.py` con consulta de resultados, entrenamiento demo opt-in, progreso y sanity check manual.
+- `requirements.txt`, `README_WEB.md` y reglas `.gitignore` para datos, checkpoints y secretos.
+
+### No cambiado
+
+- Notebooks existentes, arquitecturas, salidas, loss, fórmulas de métricas, criterio best, optimizador, scheduler y protocolo científico.
+- Datasets, checkpoints y resultados existentes.
+
 ## 2026-08-25 — pipeline opcional de validación repetida
 
 Rama: cross-validation-pipeline
