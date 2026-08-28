@@ -1,0 +1,11 @@
+*.npy
+*.pth
+*.pt
+*.safetensors
+checkpoints/
+data/
+web_runs/
+__pycache__/
+.ipynb_checkpoints/
+.streamlit/secrets.toml
+/tmp*/
