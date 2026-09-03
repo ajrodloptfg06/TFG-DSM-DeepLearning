@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-03 — fallback público con datos y predicciones demo
+
+Rama: streamlit-login-predictions
+
+### Añadido
+
+- Fallback automático a las 32 muestras de entrenamiento de `demo_data.npz` cuando no están disponibles los `.npy` completos.
+- Predicciones públicas precalculadas para 10 muestras y las cinco arquitecturas, sin cargar checkpoints ni instanciar modelos.
+- Visualización del índice demo y del índice original de test, canales, DSM real, DSM predicho, error absoluto y métricas por muestra.
+- Límite dinámico del selector de entrenamiento según las muestras disponibles.
+- Sanitización central de rutas absolutas también dentro de los detalles técnicos.
+
+### Corregido
+
+- La interfaz describe el protocolo como validación repetida con cinco particiones aleatorias independientes 80/20.
+
+### No cambiado
+
+- Arquitecturas, modelos, métricas científicas, loss, optimizador, scheduler, entrenamiento científico, CSV, checkpoints y notebooks.
+- `demo_data.npz` se trata como entrada de solo lectura.
+
 ## 2026-09-02 — acceso y predicciones DSM en Streamlit
 
 Rama: streamlit-login-predictions

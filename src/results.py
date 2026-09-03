@@ -55,11 +55,11 @@ def load_all_crossval_results(results_dir: str | Path | None = None) -> pd.DataF
     if not frames:
         return _empty_frame(
             FOLD_RESULT_COLUMNS,
-            "No hay resultados fold a fold disponibles.",
+            "No hay resultados por partición disponibles.",
             warnings,
         )
     combined = pd.concat(frames, ignore_index=True, sort=False)
-    combined.attrs["message"] = f"Se cargaron {len(paths)} archivos fold a fold."
+    combined.attrs["message"] = f"Se cargaron {len(paths)} archivos por partición."
     combined.attrs["warnings"] = warnings
     return combined
 
@@ -73,7 +73,7 @@ def load_existing_crossval_summaries(
     if not frames:
         return _empty_frame(
             SUMMARY_COLUMNS + ["source_csv"],
-            "No hay resultados de validación cruzada disponibles en esta versión de la aplicación.",
+            "No hay resultados de validación repetida disponibles en esta versión de la aplicación.",
             warnings,
         )
     combined = pd.concat(frames, ignore_index=True, sort=False)
@@ -90,7 +90,7 @@ def build_crossval_summary(
     if folds.empty:
         existing = load_existing_crossval_summaries(results_dir)
         if existing.empty:
-            message = "No hay resultados de validación cruzada disponibles en esta versión de la aplicación."
+            message = "No hay resultados de validación repetida disponibles en esta versión de la aplicación."
             return _empty_frame(SUMMARY_COLUMNS, message, existing.attrs.get("warnings"))
         available = [column for column in SUMMARY_COLUMNS if column in existing.columns]
         summary = existing[available].copy()
@@ -108,7 +108,7 @@ def build_crossval_summary(
     if missing:
         return _empty_frame(
             SUMMARY_COLUMNS,
-            f"Los resultados fold a fold no contienen las columnas requeridas: {sorted(missing)}",
+            f"Los resultados por partición no contienen las columnas requeridas: {sorted(missing)}",
         )
 
     metric_columns = ["best_val_RMSE", "best_val_MAE", "best_val_R2"]
@@ -131,7 +131,7 @@ def build_crossval_summary(
     summary = summary[SUMMARY_COLUMNS].sort_values(
         ["run_id", "mean_val_RMSE"], ascending=[True, True]
     ).reset_index(drop=True)
-    summary.attrs["message"] = "Resumen recalculado desde resultados fold a fold."
+    summary.attrs["message"] = "Resumen recalculado desde resultados por partición."
     summary.attrs["warnings"] = folds.attrs.get("warnings", [])
     return summary
 

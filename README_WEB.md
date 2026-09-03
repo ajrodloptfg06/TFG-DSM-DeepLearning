@@ -1,6 +1,6 @@
 # Aplicación web del TFG DSM
 
-Esta interfaz protegida permite consultar resultados existentes, generar una predicción DSM individual y ejecutar entrenamientos reducidos de demostración para las cinco arquitecturas del TFG. No reemplaza el notebook ni el protocolo científico de validación cruzada.
+Esta interfaz protegida permite consultar resultados existentes, generar una predicción DSM individual y ejecutar entrenamientos reducidos de demostración para las cinco arquitecturas del TFG. No reemplaza el notebook ni el protocolo científico de validación repetida con cinco particiones aleatorias independientes 80/20.
 
 ## Instalación
 
@@ -26,7 +26,7 @@ pip install -r requirements.txt
 
 ## Datos
 
-Por defecto, la aplicación busca:
+En un entorno local completo, la aplicación busca:
 
 ```text
 data/xtrain_nyc-002.npy
@@ -35,7 +35,9 @@ data/xtest_nyc.npy
 data/ytest_nyc.npy
 ```
 
-Para una demostración web solo se cargan los dos archivos de entrenamiento. Las rutas pueden sobrescribirse sin modificar código:
+La versión pública incluye además `demo_data.npz`, un subconjunto preparado con 32 muestras de entrenamiento y 10 muestras de test. Estas muestras sirven exclusivamente para la demostración web y no constituyen el dataset científico completo.
+
+Si los `.npy` completos están disponibles, el entrenamiento demo mantiene su carga habitual. Si no lo están, utiliza automáticamente `x_train_demo` e `y_train_demo` del NPZ y limita el selector a sus 32 muestras. Las rutas locales pueden sobrescribirse sin modificar código:
 
 ```powershell
 $env:TFG_DATA_DIR = "D:\ruta\a\datos"
@@ -46,7 +48,7 @@ $env:TFG_WEB_RUNS_DIR = "D:\ruta\a\web_runs"
 
 En Linux o macOS se usan las mismas variables mediante `export`.
 
-Los datasets y checkpoints están excluidos de Git. No deben subirse al repositorio ni a Streamlit Community Cloud.
+Los datasets completos y checkpoints están excluidos de Git. No deben subirse al repositorio ni a Streamlit Community Cloud. El único subconjunto distribuible es `demo_data.npz`, preparado expresamente para esta interfaz.
 
 ## Ejecución
 
@@ -99,7 +101,7 @@ results/crossval/**/crossval_summary.csv
 web_runs/**/metrics.csv
 ```
 
-Los resultados se pueden filtrar por la arquitectura seleccionada. Cuando existen filas fold a fold, el resumen se recalcula agrupando por `run_id` y modelo e informa media y desviación estándar de MAE, RMSE y R².
+Los resultados se pueden filtrar por la arquitectura seleccionada. Cuando existen resultados por partición, el resumen se recalcula agrupando por `run_id` y modelo e informa media y desviación estándar de MAE, RMSE y R².
 
 ### Entrenar desde la web
 
@@ -123,19 +125,21 @@ El selector de épocas no impone un máximo. Muchas épocas, el dataset completo
 
 ### Predicciones DSM
 
-La página carga mediante `mmap` únicamente la muestra de test seleccionada desde `xtest_nyc.npy` y `ytest_nyc.npy`. Admite muestras guardadas como NHWC o NCHW y valida las formas `(1, 4, 128, 128)` y `(1, 1, 128, 128)` después de la conversión. `TFG_DATA_DIR` permite configurar la carpeta de datos sin cambiar el código.
+En la versión pública, la página utiliza las 10 muestras de test de `demo_data.npz` y sus predicciones precalculadas con los best checkpoints científicos del run FINAL `final_20260823T171911Z_1aa58de8`. Al seleccionar una arquitectura se muestra directamente su predicción asociada, sin instanciar modelos, descargar pesos ni buscar checkpoints en el servidor.
 
-Los cuatro canales se normalizan min-max solo para mostrarlos en pantalla. El tensor original, sin esa transformación visual, es el que recibe el modelo.
+En ausencia del NPZ, la aplicación local conserva el flujo completo: carga mediante `mmap` únicamente la muestra seleccionada desde `xtest_nyc.npy` y `ytest_nyc.npy`, admite NHWC o NCHW y valida las formas `(1, 4, 128, 128)` y `(1, 1, 128, 128)`. `TFG_DATA_DIR` permite configurar la carpeta de datos sin cambiar el código.
 
-Para cada arquitectura, la aplicación consulta los CSV fold a fold y selecciona un único checkpoint: el del split con menor `best_val_RMSE`. No realiza ensemble. La resolución local conserva la ruta registrada cuando existe o reconstruye su ubicación bajo `TFG_CHECKPOINTS_DIR`:
+Los cuatro canales se normalizan min-max solo para mostrarlos en pantalla. Esa transformación no altera los valores usados para las métricas ni las predicciones precalculadas; en el flujo local de inferencia, el modelo recibe el tensor original.
+
+En el flujo local sin NPZ, la aplicación consulta los CSV por partición y selecciona un único checkpoint: el del split con menor `best_val_RMSE`. No realiza ensemble. La resolución local conserva la ruta registrada cuando existe o reconstruye su ubicación bajo `TFG_CHECKPOINTS_DIR`:
 
 ```powershell
 $env:TFG_CHECKPOINTS_DIR = "D:\ruta\a\checkpoints"
 ```
 
-Al pulsar `Generar predicción`, se instancia solamente el modelo elegido, se cargan sus pesos, se exige una salida nativa exacta `(1, 1, 128, 128)` sin interpolación y se libera el modelo al terminar. La página muestra ground truth, predicción, error absoluto y MAE/RMSE de esa muestra usando las funciones existentes del proyecto. No entrena ni escribe archivos.
+En ese flujo local, al pulsar `Generar predicción`, se instancia solamente el modelo elegido, se cargan sus pesos, se exige una salida nativa exacta `(1, 1, 128, 128)` sin interpolación y se libera el modelo al terminar. En ambos flujos, la página muestra DSM real, predicción, error absoluto y MAE/RMSE únicamente de la muestra visualizada usando las funciones existentes del proyecto. No entrena ni escribe archivos.
 
-Los datasets y checkpoints están excluidos de Git, por lo que normalmente no estarán disponibles en el despliegue público. En ese caso la aplicación muestra un aviso limpio y sigue permitiendo consultar los resultados CSV versionados.
+El subconjunto y las predicciones precalculadas evitan desplegar el dataset completo y los checkpoints pesados en Streamlit Community Cloud. Sus métricas por muestra no deben interpretarse como resultados globales ni sustituir la evaluación científica completa.
 
 ## Entrenamiento web frente al protocolo científico
 

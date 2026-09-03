@@ -76,7 +76,18 @@ def _render_login() -> bool:
 
 
 def _render_technical_details(details: list[str] | tuple[str, ...]) -> None:
-    clean_details = [str(detail) for detail in details if detail]
+    clean_details = []
+    internal_path = re.compile(
+        r"(?i)(?:[A-Z]:[\\/]|(?:^|[\s\"'(=:])/(?!/)[^\s]*)"
+    )
+    for detail in details:
+        if not detail:
+            continue
+        text = str(detail)
+        if internal_path.search(text):
+            error_type = text.split(":", 1)[0]
+            text = f"{error_type}: información de ruta interna omitida."
+        clean_details.append(text)
     if not clean_details:
         return
     with st.expander("Detalles técnicos", expanded=False):
@@ -116,18 +127,19 @@ def _presentable_table(frame: pd.DataFrame) -> pd.DataFrame:
             visible[column] = visible[column].map(_basename_only)
     for column in visible.select_dtypes(include=["object"]).columns:
         visible[column] = visible[column].map(_presentable_value)
-    return visible
+    return visible.rename(columns={"fold": "partición"})
 
 
 def _render_results(model_name: str) -> None:
-    st.subheader("Resultados de validación cruzada")
+    st.subheader("Resultados de validación repetida")
+    st.caption("5 particiones aleatorias independientes con split 80/20.")
     folds = load_all_crossval_results(RESULTS_DIR)
     summary = build_crossval_summary(folds, RESULTS_DIR)
 
     if not summary.empty and "model" in summary.columns:
         filtered_summary = summary[summary["model"] == model_name]
         if filtered_summary.empty:
-            st.info(f"No hay resumen de validación cruzada para {model_name}.")
+            st.info(f"No hay resumen de validación repetida para {model_name}.")
         else:
             st.dataframe(
                 _presentable_table(filtered_summary),
@@ -137,11 +149,11 @@ def _render_results(model_name: str) -> None:
     else:
         _show_dataframe_message(summary)
 
-    st.subheader("Resultados fold a fold")
+    st.subheader("Resultados por partición")
     if not folds.empty and "model" in folds.columns:
         filtered_folds = folds[folds["model"] == model_name]
         if filtered_folds.empty:
-            st.info(f"No hay filas fold a fold para {model_name}.")
+            st.info(f"No hay resultados por partición para {model_name}.")
         else:
             st.dataframe(
                 _presentable_table(filtered_folds),
@@ -218,8 +230,8 @@ def _render_training(
 ) -> None:
     st.warning(
         "El entrenamiento desde la web está pensado como demostración. "
-        "Los experimentos científicos completos se realizan mediante validación "
-        "cruzada de 5 folds y 50 épocas."
+        "Los experimentos científicos completos usan validación repetida con "
+        "5 particiones aleatorias independientes 80/20 y 50 épocas."
     )
     st.write(
         "El entrenamiento solo comienza al pulsar el botón. Para grabar una demo, "
@@ -311,6 +323,49 @@ def _render_scalar_field(values: np.ndarray, title: str, cmap: str = "viridis") 
     plt.close(figure)
 
 
+def _render_sample_visuals(x_sample, y_sample) -> np.ndarray:
+    st.markdown("#### Canales de entrada")
+    channel_columns = st.columns(4)
+    for channel_index, column in enumerate(channel_columns):
+        original = x_sample[0, channel_index].detach().cpu().numpy()
+        with column:
+            st.image(
+                _normalized_for_display(original),
+                caption=f"Canal {channel_index + 1}",
+                clamp=True,
+                use_container_width=True,
+            )
+            st.caption(_array_stats(original))
+
+    target = y_sample[0, 0].detach().cpu().numpy()
+    st.markdown("#### DSM real")
+    target_column, target_stats_column = st.columns([2, 1])
+    with target_column:
+        _render_scalar_field(target, "DSM real")
+    with target_stats_column:
+        st.metric("Mínimo", f"{np.nanmin(target):.4f}")
+        st.metric("Máximo", f"{np.nanmax(target):.4f}")
+        st.metric("Media", f"{np.nanmean(target):.4f}")
+    return target
+
+
+def _render_prediction_visuals(prediction_tensor, y_sample, target: np.ndarray) -> None:
+    from src.predictions import sample_error_metrics
+
+    metrics = sample_error_metrics(prediction_tensor, y_sample)
+    prediction = prediction_tensor[0, 0].detach().cpu().numpy()
+    absolute_error = np.abs(prediction - target)
+    prediction_column, error_column = st.columns(2)
+    with prediction_column:
+        _render_scalar_field(prediction, "DSM predicho")
+    with error_column:
+        _render_scalar_field(absolute_error, "Error absoluto", cmap="magma")
+
+    mae_column, rmse_column = st.columns(2)
+    mae_column.metric("MAE de la muestra", f"{metrics['MAE']:.6f}")
+    rmse_column.metric("RMSE de la muestra", f"{metrics['RMSE']:.6f}")
+
+
 def _render_predictions() -> None:
     st.subheader("Predicciones DSM")
     st.write(
@@ -322,6 +377,46 @@ def _render_predictions() -> None:
         MODEL_NAMES,
         key="prediction_model",
     )
+
+    from src.predictions import precomputed_demo_available
+
+    if precomputed_demo_available():
+        try:
+            from src.predictions import (
+                get_precomputed_demo_size,
+                load_precomputed_demo_sample,
+            )
+
+            demo_size = get_precomputed_demo_size()
+            sample_index = int(
+                st.number_input(
+                    "Muestra demo",
+                    min_value=0,
+                    max_value=demo_size - 1,
+                    value=0,
+                    step=1,
+                )
+            )
+            x_sample, y_sample, prediction_tensor, original_index = (
+                load_precomputed_demo_sample(model_name, sample_index)
+            )
+            st.caption(
+                f"Muestra demo {sample_index} "
+                f"(índice original de test: {original_index})"
+            )
+            target = _render_sample_visuals(x_sample, y_sample)
+            _render_prediction_visuals(prediction_tensor, y_sample, target)
+            st.caption(
+                "Predicción precalculada con el checkpoint científico del run FINAL. "
+                "Las métricas mostradas corresponden únicamente a la muestra visualizada."
+            )
+        except (FileNotFoundError, ValueError, IndexError) as exc:
+            st.info("Los datos demo de predicción no están disponibles correctamente.")
+            _render_technical_details([f"{type(exc).__name__}: {exc}"])
+        except ImportError as exc:
+            st.error("Faltan dependencias para mostrar la predicción demo.")
+            _render_technical_details([f"{type(exc).__name__}: {exc}"])
+        return
 
     try:
         from src.data import get_test_dataset_size, load_test_sample
@@ -346,28 +441,7 @@ def _render_predictions() -> None:
         _render_technical_details([f"{type(exc).__name__}: {exc}"])
         return
 
-    st.markdown("#### Canales de entrada")
-    channel_columns = st.columns(4)
-    for channel_index, column in enumerate(channel_columns):
-        original = x_sample[0, channel_index].detach().cpu().numpy()
-        with column:
-            st.image(
-                _normalized_for_display(original),
-                caption=f"Canal {channel_index + 1}",
-                clamp=True,
-                use_container_width=True,
-            )
-            st.caption(_array_stats(original))
-
-    target = y_sample[0, 0].detach().cpu().numpy()
-    st.markdown("#### DSM objetivo")
-    target_column, target_stats_column = st.columns([2, 1])
-    with target_column:
-        _render_scalar_field(target, "Ground truth DSM")
-    with target_stats_column:
-        st.metric("Mínimo", f"{np.nanmin(target):.4f}")
-        st.metric("Máximo", f"{np.nanmax(target):.4f}")
-        st.metric("Media", f"{np.nanmean(target):.4f}")
+    target = _render_sample_visuals(x_sample, y_sample)
 
     checkpoint_info = find_best_fold_checkpoint(model_name)
     checkpoint_path = None if checkpoint_info is None else checkpoint_info["checkpoint"]
@@ -394,23 +468,11 @@ def _render_predictions() -> None:
         return
 
     try:
-        from src.predictions import predict_test_sample, sample_error_metrics
+        from src.predictions import predict_test_sample
 
         with st.spinner("Generando predicción con el checkpoint seleccionado..."):
             prediction_tensor = predict_test_sample(model_name, x_sample, checkpoint_path)
-            metrics = sample_error_metrics(prediction_tensor, y_sample)
-
-        prediction = prediction_tensor[0, 0].numpy()
-        absolute_error = np.abs(prediction - target)
-        prediction_column, error_column = st.columns(2)
-        with prediction_column:
-            _render_scalar_field(prediction, "Predicción DSM")
-        with error_column:
-            _render_scalar_field(absolute_error, "Error absoluto", cmap="magma")
-
-        mae_column, rmse_column = st.columns(2)
-        mae_column.metric("MAE de la muestra", f"{metrics['MAE']:.6f}")
-        rmse_column.metric("RMSE de la muestra", f"{metrics['RMSE']:.6f}")
+        _render_prediction_visuals(prediction_tensor, y_sample, target)
         st.caption(
             "Estas métricas corresponden únicamente a la muestra visualizada y no "
             "sustituyen la evaluación científica completa."
@@ -442,8 +504,8 @@ def main() -> None:
     )
     st.info(
         "Los resultados científicos completos proceden de los entrenamientos de "
-        "validación cruzada realizados previamente. El entrenamiento desde la web "
-        "está pensado como demostración."
+        "validación repetida con 5 particiones aleatorias independientes 80/20. "
+        "El entrenamiento desde la web está pensado como demostración."
     )
 
     st.sidebar.header("Navegación")
@@ -459,15 +521,39 @@ def main() -> None:
         _render_predictions()
     else:
         model_name = st.sidebar.selectbox("Arquitectura", MODEL_NAMES)
+        demo_training_info = None
+        try:
+            from src.data import get_demo_training_info
+
+            demo_training_info = get_demo_training_info()
+        except (FileNotFoundError, ValueError, ImportError):
+            pass
         epochs = int(
             st.sidebar.number_input("Número de épocas", min_value=1, value=1, step=1)
         )
         batch_size = int(
             st.sidebar.number_input("Batch size", min_value=1, value=16, step=1)
         )
-        use_full_dataset = st.sidebar.checkbox("Usar todo el train en la demo", value=False)
+        if demo_training_info and demo_training_info["source"] == "demo":
+            st.sidebar.caption(
+                f"Subconjunto web disponible: {demo_training_info['sample_count']} muestras."
+            )
+        use_full_dataset = st.sidebar.checkbox(
+            "Usar todas las muestras disponibles en la demo", value=False
+        )
+        available_samples = (
+            int(demo_training_info["sample_count"])
+            if demo_training_info
+            else 32
+        )
         max_samples_value = int(
-            st.sidebar.number_input("Máximo de muestras demo", min_value=2, value=32, step=1)
+            st.sidebar.number_input(
+                "Máximo de muestras demo",
+                min_value=2,
+                max_value=available_samples,
+                value=min(32, available_samples),
+                step=1,
+            )
         )
         max_samples = None if use_full_dataset else max_samples_value
         learning_rate = float(

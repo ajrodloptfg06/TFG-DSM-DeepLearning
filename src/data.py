@@ -10,6 +10,9 @@ import numpy as np
 from .config import DATA_PATHS
 
 
+DEMO_DATA_PATH = Path(__file__).resolve().parents[1] / "demo_data.npz"
+
+
 def _resolve_paths(paths: Mapping[str, str | Path] | None = None) -> dict[str, Path]:
     source = DATA_PATHS if paths is None else paths
     return {name: Path(path).expanduser().resolve() for name, path in source.items()}
@@ -80,13 +83,27 @@ def load_demo_dataset(
 ):
     resolved = _resolve_paths(paths)
     required = ("x_train", "y_train")
-    _require_files(resolved, required)
 
     if max_samples is not None and int(max_samples) < 2:
         raise ValueError("max_samples debe ser None o al menos 2.")
 
-    x_train = np.load(resolved["x_train"], mmap_mode="r")
-    y_train = np.load(resolved["y_train"], mmap_mode="r")
+    if all(resolved[name].is_file() for name in required):
+        x_train = np.load(resolved["x_train"], mmap_mode="r")
+        y_train = np.load(resolved["y_train"], mmap_mode="r")
+    elif DEMO_DATA_PATH.is_file():
+        with np.load(DEMO_DATA_PATH, allow_pickle=False) as demo:
+            missing_keys = {
+                "x_train_demo", "y_train_demo"
+            } - set(demo.files)
+            if missing_keys:
+                raise ValueError(
+                    "El archivo demo no contiene los arrays de entrenamiento requeridos."
+                )
+            x_train = demo["x_train_demo"]
+            y_train = demo["y_train_demo"]
+    else:
+        _require_files(resolved, required)
+
     if len(x_train) != len(y_train):
         raise ValueError(
             f"x_train e y_train tienen distinto número de muestras: {len(x_train)} != {len(y_train)}"
@@ -102,6 +119,38 @@ def load_demo_dataset(
         _to_nchw_float32(x_demo, expected_channels=4, name="x_train demo"),
         _to_nchw_float32(y_demo, expected_channels=1, name="y_train demo"),
     )
+
+
+def get_demo_training_info(
+    paths: Mapping[str, str | Path] | None = None,
+) -> dict[str, object]:
+    """Informa de la fuente y capacidad disponibles para el entrenamiento web."""
+    resolved = _resolve_paths(paths)
+    required = ("x_train", "y_train")
+    if all(resolved[name].is_file() for name in required):
+        x_train = np.load(resolved["x_train"], mmap_mode="r")
+        y_train = np.load(resolved["y_train"], mmap_mode="r")
+        source = "complete"
+    elif DEMO_DATA_PATH.is_file():
+        with np.load(DEMO_DATA_PATH, allow_pickle=False) as demo:
+            missing_keys = {
+                "x_train_demo", "y_train_demo"
+            } - set(demo.files)
+            if missing_keys:
+                raise ValueError(
+                    "El archivo demo no contiene los arrays de entrenamiento requeridos."
+                )
+            x_train = demo["x_train_demo"]
+            y_train = demo["y_train_demo"]
+        source = "demo"
+    else:
+        _require_files(resolved, required)
+
+    if len(x_train) != len(y_train):
+        raise ValueError("Los arrays de entrenamiento disponibles no están emparejados.")
+    if len(x_train) < 2:
+        raise ValueError("El entrenamiento demo necesita al menos dos muestras.")
+    return {"sample_count": len(x_train), "source": source}
 
 
 def get_test_dataset_size(
