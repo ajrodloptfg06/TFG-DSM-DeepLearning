@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .config import RESULTS_DIR, WEB_RUNS_DIR
+from .config import CHECKPOINTS_DIR, RESULTS_DIR, WEB_RUNS_DIR
 
 
 FOLD_RESULT_COLUMNS = [
@@ -148,3 +148,52 @@ def load_web_run_results(web_runs_dir: str | Path | None = None) -> pd.DataFrame
     combined.attrs["message"] = f"Se cargaron {len(paths)} ejecuciones web."
     combined.attrs["warnings"] = warnings
     return combined
+
+
+def find_best_fold_checkpoint(
+    model_name: str,
+    results_dir: str | Path | None = None,
+    checkpoints_dir: str | Path | None = None,
+) -> dict[str, object] | None:
+    """Selecciona el fold con menor val RMSE y resuelve su checkpoint local."""
+    folds = load_all_crossval_results(results_dir)
+    required = {"model", "best_val_RMSE", "checkpoint"}
+    if folds.empty or not required.issubset(folds.columns):
+        return None
+
+    candidates = folds[folds["model"] == model_name].copy()
+    candidates["best_val_RMSE"] = pd.to_numeric(
+        candidates["best_val_RMSE"], errors="coerce"
+    )
+    candidates = candidates.dropna(subset=["best_val_RMSE", "checkpoint"])
+    if candidates.empty:
+        return None
+
+    row = candidates.sort_values("best_val_RMSE", ascending=True).iloc[0]
+    recorded = Path(str(row["checkpoint"])).expanduser()
+    checkpoint_root = (
+        CHECKPOINTS_DIR
+        if checkpoints_dir is None
+        else Path(checkpoints_dir).expanduser().resolve()
+    )
+
+    possible_paths: list[Path] = [recorded]
+    normalized = str(row["checkpoint"]).replace("\\", "/")
+    marker = "/checkpoints/"
+    if marker in normalized:
+        relative_tail = normalized.split(marker, 1)[1]
+        possible_paths.append(checkpoint_root / Path(relative_tail))
+    elif not recorded.is_absolute():
+        possible_paths.append(checkpoint_root / recorded)
+
+    resolved_checkpoint = next(
+        (path.resolve() for path in possible_paths if path.is_file()),
+        None,
+    )
+    fold_value = row.get("fold")
+    return {
+        "checkpoint": resolved_checkpoint,
+        "checkpoint_name": recorded.name,
+        "fold": None if pd.isna(fold_value) else fold_value,
+        "best_val_RMSE": float(row["best_val_RMSE"]),
+    }
