@@ -5,6 +5,83 @@ from __future__ import annotations
 import gc
 from pathlib import Path
 
+import numpy as np
+
+from .data import DEMO_DATA_PATH, _sample_to_nchw_float32
+
+
+DEMO_PREDICTION_KEYS = {
+    "U-Net": "pred_unet",
+    "U-Net++": "pred_unetpp",
+    "Attention-U-Net-Residual": "pred_attention",
+    "Swin-Tiny-Encoder-CNN-Decoder": "pred_swin",
+    "HRNet-W18-Multiscale": "pred_hrnet",
+}
+
+
+def precomputed_demo_available(path: str | Path | None = None) -> bool:
+    demo_path = DEMO_DATA_PATH if path is None else Path(path).expanduser().resolve()
+    return demo_path.is_file()
+
+
+def get_precomputed_demo_size(path: str | Path | None = None) -> int:
+    demo_path = DEMO_DATA_PATH if path is None else Path(path).expanduser().resolve()
+    with np.load(demo_path, allow_pickle=False) as demo:
+        required = {"x_test_demo", "y_test_demo", "test_indices"}
+        missing = required - set(demo.files)
+        if missing:
+            raise ValueError("El archivo demo no contiene todos los arrays de test requeridos.")
+        sizes = {len(demo[key]) for key in required}
+        if len(sizes) != 1:
+            raise ValueError("Los arrays de test del archivo demo no están emparejados.")
+        sample_count = sizes.pop()
+    if sample_count < 1:
+        raise ValueError("El subconjunto demo de test está vacío.")
+    return sample_count
+
+
+def load_precomputed_demo_sample(
+    model_name: str,
+    index: int,
+    path: str | Path | None = None,
+):
+    """Carga entrada, target y predicción precalculada de una muestra demo."""
+    if model_name not in DEMO_PREDICTION_KEYS:
+        raise ValueError(f"Modelo sin predicción demo asociada: {model_name}")
+
+    demo_path = DEMO_DATA_PATH if path is None else Path(path).expanduser().resolve()
+    prediction_key = DEMO_PREDICTION_KEYS[model_name]
+    with np.load(demo_path, allow_pickle=False) as demo:
+        required = {"x_test_demo", "y_test_demo", "test_indices", prediction_key}
+        missing = required - set(demo.files)
+        if missing:
+            raise ValueError("El archivo demo no contiene la predicción requerida.")
+        sizes = {len(demo[key]) for key in required}
+        if len(sizes) != 1:
+            raise ValueError("Los arrays de predicción demo no están emparejados.")
+        sample_count = sizes.pop()
+        sample_index = int(index)
+        if sample_index < 0 or sample_index >= sample_count:
+            raise IndexError("Índice de muestra demo fuera de rango.")
+
+        x_sample = _sample_to_nchw_float32(
+            demo["x_test_demo"][sample_index:sample_index + 1],
+            expected_channels=4,
+            name="x_test demo",
+        )
+        y_sample = _sample_to_nchw_float32(
+            demo["y_test_demo"][sample_index:sample_index + 1],
+            expected_channels=1,
+            name="y_test demo",
+        )
+        prediction = _sample_to_nchw_float32(
+            demo[prediction_key][sample_index:sample_index + 1],
+            expected_channels=1,
+            name="predicción demo",
+        )
+        original_index = int(demo["test_indices"][sample_index])
+
+    return x_sample, y_sample, prediction, original_index
 
 def _extract_model_state(checkpoint):
     if not isinstance(checkpoint, dict):
