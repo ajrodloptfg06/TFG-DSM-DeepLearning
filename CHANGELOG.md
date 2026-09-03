@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-02 — acceso y predicciones DSM en Streamlit
+
+Rama: streamlit-login-predictions
+
+### Añadido
+
+- Pantalla de acceso previa a la aplicación, configurada mediante `APP_USERNAME` y `APP_PASSWORD` en Streamlit Secrets o variables de entorno.
+- Persistencia de autenticación en `st.session_state` y cierre de sesión explícito.
+- Navegación separada entre resultados, predicciones DSM y entrenamiento demo.
+- Carga `mmap` de una única muestra de test compatible con NHWC/NCHW.
+- Selección del checkpoint del fold con menor `best_val_RMSE`, sin ensemble.
+- Inferencia individual estricta con salida nativa `(1, 1, 128, 128)`, visualización de canales, DSM real, predicción y error absoluto.
+- MAE y RMSE de la muestra calculadas con las funciones existentes del proyecto.
+- Documentación de acceso local y Streamlit Community Cloud usando únicamente credenciales ficticias.
+
+### No cambiado
+
+- Arquitecturas, modelos, capas, forwards, loss, métricas, optimizador, scheduler, protocolo científico, repeated holdout, CSV científicos y checkpoints.
+- Notebooks y documentación científica previa.
+- La inferencia no entrena modelos ni escribe resultados.
+
 ## 2026-08-28 — aplicación web Streamlit
 
 Rama: streamlit-web-app

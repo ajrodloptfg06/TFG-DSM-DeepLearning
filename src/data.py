@@ -38,6 +38,25 @@ def _to_nchw_float32(array: np.ndarray, *, expected_channels: int, name: str):
     return torch.from_numpy(array.astype(np.float32)).permute(0, 3, 1, 2)
 
 
+def _sample_to_nchw_float32(array: np.ndarray, *, expected_channels: int, name: str):
+    """Convierte una única muestra NHWC o NCHW sin cargar el dataset completo."""
+    import torch
+
+    sample = np.asarray(array)
+    if sample.ndim != 4 or sample.shape[0] != 1:
+        raise ValueError(f"{name} debe contener una única muestra 4D; shape={sample.shape}")
+
+    if sample.shape[-1] == expected_channels and tuple(sample.shape[1:3]) == (128, 128):
+        return torch.from_numpy(sample.astype(np.float32)).permute(0, 3, 1, 2)
+    if sample.shape[1] == expected_channels and tuple(sample.shape[2:4]) == (128, 128):
+        return torch.from_numpy(sample.astype(np.float32))
+
+    raise ValueError(
+        f"{name} debe tener forma (1, 128, 128, {expected_channels}) o "
+        f"(1, {expected_channels}, 128, 128); shape={sample.shape}"
+    )
+
+
 def load_complete_dataset(
     paths: Mapping[str, str | Path] | None = None,
 ) -> dict[str, object]:
@@ -83,3 +102,57 @@ def load_demo_dataset(
         _to_nchw_float32(x_demo, expected_channels=4, name="x_train demo"),
         _to_nchw_float32(y_demo, expected_channels=1, name="y_train demo"),
     )
+
+
+def get_test_dataset_size(
+    paths: Mapping[str, str | Path] | None = None,
+) -> int:
+    """Devuelve el número de muestras de test usando cabeceras/memmap de NumPy."""
+    resolved = _resolve_paths(paths)
+    required = ("x_test", "y_test")
+    _require_files(resolved, required)
+
+    x_test = np.load(resolved["x_test"], mmap_mode="r")
+    y_test = np.load(resolved["y_test"], mmap_mode="r")
+    if len(x_test) != len(y_test):
+        raise ValueError(
+            f"x_test e y_test tienen distinto número de muestras: {len(x_test)} != {len(y_test)}"
+        )
+    if len(x_test) < 1:
+        raise ValueError("El conjunto de test está vacío.")
+    return len(x_test)
+
+
+def load_test_sample(
+    index: int,
+    paths: Mapping[str, str | Path] | None = None,
+):
+    """Carga solo una muestra emparejada de test y la devuelve en formato NCHW."""
+    resolved = _resolve_paths(paths)
+    required = ("x_test", "y_test")
+    _require_files(resolved, required)
+
+    x_test = np.load(resolved["x_test"], mmap_mode="r")
+    y_test = np.load(resolved["y_test"], mmap_mode="r")
+    if len(x_test) != len(y_test):
+        raise ValueError(
+            f"x_test e y_test tienen distinto número de muestras: {len(x_test)} != {len(y_test)}"
+        )
+
+    sample_index = int(index)
+    if sample_index < 0 or sample_index >= len(x_test):
+        raise IndexError(
+            f"Índice de test fuera de rango: {sample_index}; muestras disponibles={len(x_test)}"
+        )
+
+    x_sample = _sample_to_nchw_float32(
+        x_test[sample_index:sample_index + 1],
+        expected_channels=4,
+        name="x_test muestra",
+    )
+    y_sample = _sample_to_nchw_float32(
+        y_test[sample_index:sample_index + 1],
+        expected_channels=1,
+        name="y_test muestra",
+    )
+    return x_sample, y_sample

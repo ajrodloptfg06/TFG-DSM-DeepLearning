@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import hmac
+import os
 import re
 from pathlib import PurePosixPath
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
 from src.config import RESULTS_DIR, WEB_RUNS_DIR
 from src.results import (
     build_crossval_summary,
+    find_best_fold_checkpoint,
     load_all_crossval_results,
     load_web_run_results,
 )
@@ -23,6 +27,52 @@ MODEL_NAMES = (
     "Swin-Tiny-Encoder-CNN-Decoder",
     "HRNet-W18-Multiscale",
 )
+
+
+def _configured_credential(name: str) -> str | None:
+    try:
+        value = st.secrets.get(name)
+    except Exception:
+        value = None
+    if value is None:
+        value = os.environ.get(name)
+    return str(value) if value else None
+
+
+def _render_login() -> bool:
+    st.title("Acceso a la aplicación DSM")
+    st.write("Identifícate para consultar resultados, predicciones y demostraciones.")
+
+    expected_username = _configured_credential("APP_USERNAME")
+    expected_password = _configured_credential("APP_PASSWORD")
+    missing = [
+        name
+        for name, value in (
+            ("APP_USERNAME", expected_username),
+            ("APP_PASSWORD", expected_password),
+        )
+        if value is None
+    ]
+    if missing:
+        st.error("La autenticación de la aplicación no está configurada.")
+        _render_technical_details([
+            "Variables de configuración ausentes: " + ", ".join(missing)
+        ])
+        return False
+
+    with st.form("login_form", clear_on_submit=False):
+        username = st.text_input("Usuario")
+        password = st.text_input("Contraseña", type="password")
+        submitted = st.form_submit_button("Iniciar sesión", type="primary")
+
+    if submitted:
+        valid_username = hmac.compare_digest(username, expected_username)
+        valid_password = hmac.compare_digest(password, expected_password)
+        if valid_username and valid_password:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        st.error("Usuario o contraseña incorrectos.")
+    return False
 
 
 def _render_technical_details(details: list[str] | tuple[str, ...]) -> None:
@@ -230,8 +280,161 @@ def _render_training(
         _render_technical_details([f"{type(exc).__name__}: {exc}"])
 
 
+def _array_stats(values: np.ndarray) -> str:
+    values = np.asarray(values)
+    return (
+        f"mín={np.nanmin(values):.4f} · máx={np.nanmax(values):.4f} · "
+        f"media={np.nanmean(values):.4f}"
+    )
+
+
+def _normalized_for_display(values: np.ndarray) -> np.ndarray:
+    """Normalización visual independiente del tensor enviado al modelo."""
+    values = np.asarray(values, dtype=np.float32)
+    minimum = np.nanmin(values)
+    maximum = np.nanmax(values)
+    if not np.isfinite(minimum) or not np.isfinite(maximum) or maximum <= minimum:
+        return np.zeros_like(values, dtype=np.float32)
+    return np.clip((values - minimum) / (maximum - minimum), 0.0, 1.0)
+
+
+def _render_scalar_field(values: np.ndarray, title: str, cmap: str = "viridis") -> None:
+    import matplotlib.pyplot as plt
+
+    figure, axis = plt.subplots(figsize=(5, 4))
+    image = axis.imshow(values, cmap=cmap)
+    axis.set_title(title)
+    axis.axis("off")
+    figure.colorbar(image, ax=axis, fraction=0.046, pad=0.04)
+    figure.tight_layout()
+    st.pyplot(figure, use_container_width=True)
+    plt.close(figure)
+
+
+def _render_predictions() -> None:
+    st.subheader("Predicciones DSM")
+    st.write(
+        "Selecciona una arquitectura y una muestra reservada de test para visualizar "
+        "la entrada, el DSM real y una inferencia individual."
+    )
+    model_name = st.selectbox(
+        "Arquitectura para la predicción",
+        MODEL_NAMES,
+        key="prediction_model",
+    )
+
+    try:
+        from src.data import get_test_dataset_size, load_test_sample
+
+        test_size = get_test_dataset_size()
+        sample_index = int(
+            st.number_input(
+                "Índice de muestra de test",
+                min_value=0,
+                max_value=test_size - 1,
+                value=0,
+                step=1,
+            )
+        )
+        x_sample, y_sample = load_test_sample(sample_index)
+    except (FileNotFoundError, ValueError, IndexError) as exc:
+        st.info("Los datos de test no están disponibles en esta versión desplegada.")
+        _render_technical_details([f"{type(exc).__name__}: {exc}"])
+        return
+    except ImportError as exc:
+        st.error("Faltan dependencias para cargar los datos de test.")
+        _render_technical_details([f"{type(exc).__name__}: {exc}"])
+        return
+
+    st.markdown("#### Canales de entrada")
+    channel_columns = st.columns(4)
+    for channel_index, column in enumerate(channel_columns):
+        original = x_sample[0, channel_index].detach().cpu().numpy()
+        with column:
+            st.image(
+                _normalized_for_display(original),
+                caption=f"Canal {channel_index + 1}",
+                clamp=True,
+                use_container_width=True,
+            )
+            st.caption(_array_stats(original))
+
+    target = y_sample[0, 0].detach().cpu().numpy()
+    st.markdown("#### DSM objetivo")
+    target_column, target_stats_column = st.columns([2, 1])
+    with target_column:
+        _render_scalar_field(target, "Ground truth DSM")
+    with target_stats_column:
+        st.metric("Mínimo", f"{np.nanmin(target):.4f}")
+        st.metric("Máximo", f"{np.nanmax(target):.4f}")
+        st.metric("Media", f"{np.nanmean(target):.4f}")
+
+    checkpoint_info = find_best_fold_checkpoint(model_name)
+    checkpoint_path = None if checkpoint_info is None else checkpoint_info["checkpoint"]
+    if checkpoint_path is None:
+        st.info("No hay checkpoint disponible para este modelo en esta versión desplegada.")
+    else:
+        st.caption(
+            "Se usará el checkpoint del mejor split según RMSE de validación; "
+            "no se realiza ensemble."
+        )
+        fold = checkpoint_info.get("fold")
+        fold_label = "no disponible" if fold is None else str(fold)
+        st.write(
+            f"Split seleccionado: `{fold_label}` · "
+            f"RMSE de validación: `{checkpoint_info['best_val_RMSE']:.6f}`"
+        )
+
+    generate = st.button(
+        "Generar predicción",
+        type="primary",
+        disabled=checkpoint_path is None,
+    )
+    if not generate:
+        return
+
+    try:
+        from src.predictions import predict_test_sample, sample_error_metrics
+
+        with st.spinner("Generando predicción con el checkpoint seleccionado..."):
+            prediction_tensor = predict_test_sample(model_name, x_sample, checkpoint_path)
+            metrics = sample_error_metrics(prediction_tensor, y_sample)
+
+        prediction = prediction_tensor[0, 0].numpy()
+        absolute_error = np.abs(prediction - target)
+        prediction_column, error_column = st.columns(2)
+        with prediction_column:
+            _render_scalar_field(prediction, "Predicción DSM")
+        with error_column:
+            _render_scalar_field(absolute_error, "Error absoluto", cmap="magma")
+
+        mae_column, rmse_column = st.columns(2)
+        mae_column.metric("MAE de la muestra", f"{metrics['MAE']:.6f}")
+        rmse_column.metric("RMSE de la muestra", f"{metrics['RMSE']:.6f}")
+        st.caption(
+            "Estas métricas corresponden únicamente a la muestra visualizada y no "
+            "sustituyen la evaluación científica completa."
+        )
+    except ImportError as exc:
+        st.error("Faltan dependencias de deep learning para generar la predicción.")
+        _render_technical_details([f"{type(exc).__name__}: {exc}"])
+    except Exception as exc:
+        st.error("No se pudo generar la predicción con el checkpoint seleccionado.")
+        _render_technical_details([f"{type(exc).__name__}: {exc}"])
+
+
 def main() -> None:
     st.set_page_config(page_title="Estimación de DSM", layout="wide")
+
+    if not st.session_state.get("authenticated", False):
+        _render_login()
+        return
+
+    st.sidebar.success("Sesión iniciada")
+    if st.sidebar.button("Cerrar sesión"):
+        st.session_state.pop("authenticated", None)
+        st.rerun()
+
     st.title("Estimación de DSM mediante Deep Learning")
     st.write(
         "Aplicación web básica para seleccionar arquitecturas, lanzar entrenamientos "
@@ -243,36 +446,43 @@ def main() -> None:
         "está pensado como demostración."
     )
 
-    st.sidebar.header("Configuración")
-    model_name = st.sidebar.selectbox("Arquitectura", MODEL_NAMES)
-    mode = st.sidebar.radio(
-        "Modo",
-        ("Ver resultados entrenados", "Entrenar desde la web"),
+    st.sidebar.header("Navegación")
+    page = st.sidebar.radio(
+        "Sección",
+        ("Resultados", "Predicciones DSM", "Entrenamiento demo"),
     )
-    epochs = int(st.sidebar.number_input("Número de épocas", min_value=1, value=1, step=1))
-    batch_size = int(st.sidebar.number_input("Batch size", min_value=1, value=16, step=1))
-    use_full_dataset = st.sidebar.checkbox("Usar todo el train en la demo", value=False)
-    max_samples_value = int(
-        st.sidebar.number_input("Máximo de muestras demo", min_value=2, value=32, step=1)
-    )
-    max_samples = None if use_full_dataset else max_samples_value
-    learning_rate = float(
-        st.sidebar.number_input(
-            "Learning rate",
-            min_value=1e-8,
-            value=1e-4,
-            format="%.8f",
-        )
-    )
-    use_pretrained = st.sidebar.checkbox("Usar backbone preentrenado", value=False)
-    if epochs > 5 or max_samples is None:
-        st.sidebar.warning(
-            "Esta configuración puede tardar mucho o superar los recursos de un hosting gratuito."
-        )
 
-    if mode == "Ver resultados entrenados":
+    if page == "Resultados":
+        model_name = st.sidebar.selectbox("Arquitectura", MODEL_NAMES)
         _render_results(model_name)
+    elif page == "Predicciones DSM":
+        _render_predictions()
     else:
+        model_name = st.sidebar.selectbox("Arquitectura", MODEL_NAMES)
+        epochs = int(
+            st.sidebar.number_input("Número de épocas", min_value=1, value=1, step=1)
+        )
+        batch_size = int(
+            st.sidebar.number_input("Batch size", min_value=1, value=16, step=1)
+        )
+        use_full_dataset = st.sidebar.checkbox("Usar todo el train en la demo", value=False)
+        max_samples_value = int(
+            st.sidebar.number_input("Máximo de muestras demo", min_value=2, value=32, step=1)
+        )
+        max_samples = None if use_full_dataset else max_samples_value
+        learning_rate = float(
+            st.sidebar.number_input(
+                "Learning rate",
+                min_value=1e-8,
+                value=1e-4,
+                format="%.8f",
+            )
+        )
+        use_pretrained = st.sidebar.checkbox("Usar backbone preentrenado", value=False)
+        if epochs > 5 or max_samples is None:
+            st.sidebar.warning(
+                "Esta configuración puede tardar mucho o superar los recursos de un hosting gratuito."
+            )
         _render_training(
             model_name,
             epochs,
